@@ -131,6 +131,7 @@ public:
      */
     explicit QywApiClient(const std::string& baseUrl, int timeout = 10)
         : m_baseUrl(baseUrl), m_timeout(timeout) {
+        InitializeClient();
     }
 
     /**
@@ -142,13 +143,8 @@ public:
      */
     std::optional<std::vector<BoardInfoData>> GetBoardInfo() const {
         try {
-            // 创建HTTP客户端
-            httplib::Client client(m_baseUrl);
-            client.set_connection_timeout(0, m_timeout * 1000000); // 微秒
-            client.set_read_timeout(m_timeout, 0); // 秒
-            
-            // 发送GET请求
-            auto res = client.Get("/api/v1/external/qyw/boardinfo");
+            // 发送GET请求（复用HTTP客户端）
+            auto res = m_client->Get("/api/v1/external/qyw/boardinfo");
             
             if (!res) {
                 std::cerr << "GetBoardInfo: 请求失败 - 无响应" << std::endl;
@@ -178,13 +174,8 @@ public:
      */
     std::optional<std::vector<StackInfoData>> GetStackInfo() const {
         try {
-            // 创建HTTP客户端
-            httplib::Client client(m_baseUrl);
-            client.set_connection_timeout(0, m_timeout * 1000000);
-            client.set_read_timeout(m_timeout, 0);
-            
-            // 发送GET请求
-            auto res = client.Get("/api/v1/external/qyw/stackinfo");
+            // 发送GET请求（复用HTTP客户端）
+            auto res = m_client->Get("/api/v1/external/qyw/stackinfo");
             
             if (!res) {
                 std::cerr << "GetStackInfo: 请求失败 - 无响应" << std::endl;
@@ -215,20 +206,15 @@ public:
      */
     std::optional<DeployResponse> Deploy(const std::vector<std::string>& stackLabels) const {
         try {
-            // 创建HTTP客户端
-            httplib::Client client(m_baseUrl);
-            client.set_connection_timeout(0, m_timeout * 1000000);
-            client.set_read_timeout(m_timeout, 0);
-            
             // 构建JSON请求体
             nlohmann::json body;
             body["stackLabels"] = stackLabels;
             std::string jsonStr = body.dump();
             
-            // 发送POST请求
-            auto res = client.Post("/api/v1/external/qyw/deploy",
-                                  jsonStr,
-                                  "application/json");
+            // 发送POST请求（复用HTTP客户端）
+            auto res = m_client->Post("/api/v1/external/qyw/deploy",
+                                     jsonStr,
+                                     "application/json");
             
             if (!res) {
                 std::cerr << "Deploy: 请求失败 - 无响应" << std::endl;
@@ -259,20 +245,15 @@ public:
      */
     std::optional<DeployResponse> Undeploy(const std::vector<std::string>& stackLabels) const {
         try {
-            // 创建HTTP客户端
-            httplib::Client client(m_baseUrl);
-            client.set_connection_timeout(0, m_timeout * 1000000);
-            client.set_read_timeout(m_timeout, 0);
-            
             // 构建JSON请求体
             nlohmann::json body;
             body["stackLabels"] = stackLabels;
             std::string jsonStr = body.dump();
             
-            // 发送POST请求
-            auto res = client.Post("/api/v1/external/qyw/undeploy",
-                                  jsonStr,
-                                  "application/json");
+            // 发送POST请求（复用HTTP客户端）
+            auto res = m_client->Post("/api/v1/external/qyw/undeploy",
+                                     jsonStr,
+                                     "application/json");
             
             if (!res) {
                 std::cerr << "Undeploy: 请求失败 - 无响应" << std::endl;
@@ -299,11 +280,7 @@ public:
      */
     bool TestConnection() const {
         try {
-            httplib::Client client(m_baseUrl);
-            client.set_connection_timeout(0, m_timeout * 1000000);
-            client.set_read_timeout(m_timeout, 0);
-            
-            auto res = client.Get("/api/v1/external/qyw/boardinfo");
+            auto res = m_client->Get("/api/v1/external/qyw/boardinfo");
             
             // 只要能连接上并收到响应（200或其他状态码），都认为连接成功
             return res && (res->status == 200 || res->status == 401 || res->status >= 100);
@@ -319,6 +296,8 @@ public:
      */
     void SetTimeout(int timeout) {
         m_timeout = timeout;
+        // 重新初始化客户端以应用新超时
+        InitializeClient();
     }
 
     /**
@@ -331,6 +310,16 @@ public:
 private:
     std::string m_baseUrl;      // API基础URL
     int m_timeout;              // 超时时间（秒）
+    mutable std::unique_ptr<httplib::Client> m_client;  // 复用的HTTP客户端
+    
+    /**
+     * @brief 初始化HTTP客户端
+     */
+    void InitializeClient() const {
+        m_client = std::make_unique<httplib::Client>(m_baseUrl);
+        m_client->set_connection_timeout(0, m_timeout * 1000000);  // 微秒
+        m_client->set_read_timeout(m_timeout, 0);  // 秒
+    }
 
     /**
      * @brief 解析板卡信息JSON响应

@@ -13,6 +13,7 @@
 #include <chrono>
 #include <set>
 #include <string>
+#include <unordered_map>
 
 namespace zygl::infrastructure {
 
@@ -161,40 +162,36 @@ private:
             );
             auto& allChassis = *allChassisPtr;
         
-        // 3. 创建已上报板卡的集合（用于判断离线）
-        std::set<std::string> reportedBoards;
-        for (const auto& boardInfo : boardInfos) {
-            reportedBoards.insert(boardInfo.boardAddress);
-        }
-        
-        // 4. 更新每个机箱中的板卡状态
-        for (auto& chassis : allChassis) {
-            if (chassis.GetChassisNumber() == 0) {
-                continue;  // 跳过未初始化的机箱
+            // 3. 构建板卡地址到BoardInfo的映射表（优化查找性能：O(n×m) → O(n+m)）
+            std::unordered_map<std::string, const BoardInfoData*> boardInfoMap;
+            boardInfoMap.reserve(boardInfos.size());
+            for (const auto& boardInfo : boardInfos) {
+                boardInfoMap[boardInfo.boardAddress] = &boardInfo;
             }
+        
+            // 4. 更新每个机箱中的板卡状态
+            for (auto& chassis : allChassis) {
+                if (chassis.GetChassisNumber() == 0) {
+                    continue;  // 跳过未初始化的机箱
+                }
             
-            auto& boards = chassis.GetAllBoards();
-            for (auto& board : boards) {
-                std::string boardAddr(board.GetBoardAddress());
+                auto& boards = chassis.GetAllBoards();
+                for (auto& board : boards) {
+                    std::string boardAddr(board.GetBoardAddress());
                 
-                // 检查此板卡是否在API响应中
-                bool found = false;
-                for (const auto& boardInfo : boardInfos) {
-                    if (boardInfo.boardAddress == boardAddr) {
+                    // O(1)查找板卡信息
+                    auto it = boardInfoMap.find(boardAddr);
+                    if (it != boardInfoMap.end()) {
                         // 找到了，更新状态
-                        std::vector<domain::TaskStatusInfo> tasks = ConvertTasks(boardInfo.taskInfos);
-                        board.UpdateFromApiData(boardInfo.boardStatus, tasks);
-                        found = true;
-                        break;
+                        const BoardInfoData* boardInfo = it->second;
+                        std::vector<domain::TaskStatusInfo> tasks = ConvertTasks(boardInfo->taskInfos);
+                        board.UpdateFromApiData(boardInfo->boardStatus, tasks);
+                    } else {
+                        // 未找到，标记为离线
+                        board.MarkAsOffline();
                     }
                 }
-                
-                if (!found) {
-                    // 未找到，标记为离线
-                    board.MarkAsOffline();
-                }
             }
-        }
             
             // 5. 原子性地提交所有更新（双缓冲交换）
             m_chassisRepo->SaveAll(allChassis);
