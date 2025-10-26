@@ -231,7 +231,6 @@ private:
         // 构造DeployCommandDTO
         application::DeployCommandDTO command;
         command.stackLabels.push_back(labelUUID);
-        command.operatorID = std::string(cmd->operatorID);
 
         // 调用业务逻辑
         auto response = m_stackControlService->DeployByLabels(command);
@@ -251,10 +250,9 @@ private:
     void HandleUndeployStack(const UndeployStackCommand* cmd) {
         std::string labelUUID(cmd->labelUUID);
         
-        // 构造UndeployCommandDTO
-        application::UndeployCommandDTO command;
+        // 构造DeployCommandDTO（Deploy和Undeploy共用同一个DTO）
+        application::DeployCommandDTO command;
         command.stackLabels.push_back(labelUUID);
-        command.operatorID = std::string(cmd->operatorID);
 
         // 调用业务逻辑
         auto response = m_stackControlService->UndeployByLabels(command);

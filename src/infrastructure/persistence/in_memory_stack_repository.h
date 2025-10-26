@@ -6,6 +6,7 @@
 #include <vector>
 #include <optional>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 
 namespace zygl::infrastructure {

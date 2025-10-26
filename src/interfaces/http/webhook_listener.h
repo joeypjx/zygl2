@@ -2,8 +2,8 @@
 
 #include "../../application/services/alert_service.h"
 #include "../../application/services/monitoring_service.h"
-#include <httplib.h>
-#include <nlohmann/json.hpp>
+#include "third_party/httplib.h"
+#include "third_party/json.hpp"
 #include <thread>
 #include <atomic>
 #include <memory>

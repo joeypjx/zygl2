@@ -190,7 +190,7 @@ private:
                 // 构造Board对象
                 packet.boards[i] = domain::Board(
                     boardDTO.boardAddress.c_str(),
-                    boardDTO.slotNumber,
+                    boardDTO.boardNumber,
                     static_cast<domain::BoardType>(boardDTO.boardType)
                 );
                 
