@@ -267,54 +267,91 @@ private:
         stack.SetRunningStatus(static_cast<domain::StackRunningStatus>(stackInfo.stackRunningStatus));
         
         // 添加标签
-        for (const auto& labelInfo : stackInfo.stackLabelInfos) {
+        AddLabelsToStack(stack, stackInfo.stackLabelInfos);
+        
+        // 添加组件
+        AddServicesToStack(stack, stackInfo.serviceInfos);
+        
+        return stack;
+    }
+    
+    /**
+     * @brief 添加标签到Stack
+     */
+    void AddLabelsToStack(domain::Stack& stack, const std::vector<StackInfoData::LabelInfo>& labels) const {
+        for (const auto& labelInfo : labels) {
             domain::StackLabelInfo label;
             label.SetLabelName(labelInfo.labelName.c_str());
             label.SetLabelUUID(labelInfo.labelUUID.c_str());
             stack.AddLabel(label);
         }
-        
-        // 添加组件
-        for (const auto& serviceInfo : stackInfo.serviceInfos) {
+    }
+    
+    /**
+     * @brief 添加组件到Stack
+     */
+    void AddServicesToStack(domain::Stack& stack, const std::vector<StackInfoData::ServiceInfo>& services) const {
+        for (const auto& serviceInfo : services) {
             domain::Service service(serviceInfo.serviceUUID, serviceInfo.serviceName);
             service.SetStatus(static_cast<domain::ServiceStatus>(serviceInfo.serviceStatus));
             service.SetType(static_cast<domain::ServiceType>(serviceInfo.serviceType));
             
             // 添加任务
-            for (const auto& taskInfo : serviceInfo.taskInfos) {
-                domain::Task task(taskInfo.taskID);
-                task.SetTaskStatus(taskInfo.taskStatus);
-                task.SetBoardAddress(taskInfo.boardAddress);
-                
-                // 设置资源使用
-                domain::ResourceUsage resources;
-                resources.cpuCores = taskInfo.cpuCores;
-                resources.cpuUsed = taskInfo.cpuUsed;
-                resources.cpuUsage = taskInfo.cpuUsage;
-                resources.memorySize = taskInfo.memorySize;
-                resources.memoryUsed = taskInfo.memoryUsed;
-                resources.memoryUsage = taskInfo.memoryUsage;
-                resources.netReceive = taskInfo.netReceive;
-                resources.netSent = taskInfo.netSent;
-                resources.gpuMemUsed = taskInfo.gpuMemUsed;
-                task.UpdateResources(resources);
-                
-                // 设置位置信息
-                domain::LocationInfo location;
-                location.SetChassisName(taskInfo.chassisName.c_str());
-                location.chassisNumber = taskInfo.chassisNumber;
-                location.SetBoardName(taskInfo.boardName.c_str());
-                location.boardNumber = taskInfo.boardNumber;
-                location.SetBoardAddress(taskInfo.boardAddress.c_str());
-                task.UpdateLocation(location);
-                
-                service.AddOrUpdateTask(task);
-            }
+            AddTasksToService(service, serviceInfo.taskInfos);
             
             stack.AddOrUpdateService(service);
         }
-        
-        return stack;
+    }
+    
+    /**
+     * @brief 添加任务到Service
+     */
+    void AddTasksToService(domain::Service& service, const std::vector<StackInfoData::ServiceInfo::TaskInfo>& tasks) const {
+        for (const auto& taskInfo : tasks) {
+            domain::Task task(taskInfo.taskID);
+            task.SetTaskStatus(taskInfo.taskStatus);
+            task.SetBoardAddress(taskInfo.boardAddress);
+            
+            // 设置资源使用
+            domain::ResourceUsage resources = ConvertToResourceUsage(taskInfo);
+            task.UpdateResources(resources);
+            
+            // 设置位置信息
+            domain::LocationInfo location = ConvertToLocationInfo(taskInfo);
+            task.UpdateLocation(location);
+            
+            service.AddOrUpdateTask(task);
+        }
+    }
+    
+    /**
+     * @brief 转换TaskInfo的资源使用信息
+     */
+    domain::ResourceUsage ConvertToResourceUsage(const StackInfoData::ServiceInfo::TaskInfo& taskInfo) const {
+        domain::ResourceUsage resources;
+        resources.cpuCores = taskInfo.cpuCores;
+        resources.cpuUsed = taskInfo.cpuUsed;
+        resources.cpuUsage = taskInfo.cpuUsage;
+        resources.memorySize = taskInfo.memorySize;
+        resources.memoryUsed = taskInfo.memoryUsed;
+        resources.memoryUsage = taskInfo.memoryUsage;
+        resources.netReceive = taskInfo.netReceive;
+        resources.netSent = taskInfo.netSent;
+        resources.gpuMemUsed = taskInfo.gpuMemUsed;
+        return resources;
+    }
+    
+    /**
+     * @brief 转换TaskInfo的位置信息
+     */
+    domain::LocationInfo ConvertToLocationInfo(const StackInfoData::ServiceInfo::TaskInfo& taskInfo) const {
+        domain::LocationInfo location;
+        location.SetChassisName(taskInfo.chassisName.c_str());
+        location.chassisNumber = taskInfo.chassisNumber;
+        location.SetBoardName(taskInfo.boardName.c_str());
+        location.boardNumber = taskInfo.boardNumber;
+        location.SetBoardAddress(taskInfo.boardAddress.c_str());
+        return location;
     }
 
 private:
