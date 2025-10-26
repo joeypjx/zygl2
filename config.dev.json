@@ -1,0 +1,30 @@
+{
+  "backend": {
+    "api_url": "http://192.168.1.100:8080",
+    "timeout_seconds": 15
+  },
+  "data_collector": {
+    "interval_seconds": 3
+  },
+  "udp": {
+    "multicast_address": "239.1.1.1",
+    "state_broadcast_port": 6000,
+    "command_listener_port": 6001,
+    "broadcast_interval_ms": 500
+  },
+  "webhook": {
+    "listen_port": 8888
+  },
+  "hardware": {
+    "chassis_count": 9,
+    "boards_per_chassis": 14,
+    "ip_base_pattern": "192.168.%d",
+    "ip_offset": 100
+  },
+  "limits": {
+    "max_tasks_per_board": 8,
+    "max_labels_per_stack": 8,
+    "max_alert_messages": 16
+  }
+}
+

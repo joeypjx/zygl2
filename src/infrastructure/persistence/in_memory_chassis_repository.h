@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <cstring>
+#include <mutex>
 
 namespace zygl::infrastructure {
 
@@ -73,6 +74,9 @@ public:
      * @param allChassis 所有9个机箱的新状态
      */
     void SaveAll(const std::array<domain::Chassis, domain::TOTAL_CHASSIS_COUNT>& allChassis) override {
+        // 使用互斥锁保护写操作，防止多个写入者同时修改
+        std::lock_guard<std::mutex> lock(m_writeMutex);
+        
         // 步骤1：将新数据写入后台缓冲
         *m_backBuffer = allChassis;
         
@@ -224,6 +228,8 @@ public:
      * @param initialChassis 初始的9个机箱（由ChassisFactory创建）
      */
     void Initialize(const std::array<domain::Chassis, domain::TOTAL_CHASSIS_COUNT>& initialChassis) override {
+        std::lock_guard<std::mutex> lock(m_writeMutex);
+        
         // 初始化两个缓冲
         m_buffer_A = initialChassis;
         m_buffer_B = initialChassis;
@@ -245,6 +251,9 @@ private:
     
     // 后台缓冲指针（非原子，只由写入线程访问）
     ChassisArray* m_backBuffer;
+    
+    // 写操作互斥锁（保护 SaveAll 和 Initialize）
+    mutable std::mutex m_writeMutex;
 };
 
 } // namespace zygl::infrastructure

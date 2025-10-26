@@ -13,6 +13,7 @@
 
 #include "domain/domain.h"
 #include "infrastructure/infrastructure.h"
+#include "infrastructure/config/config_loader.h"
 #include "application/application.h"
 #include "interfaces/interfaces.h"
 
@@ -21,6 +22,8 @@
 #include <thread>
 #include <csignal>
 #include <atomic>
+#include <cstring>
+#include <ctime>
 
 using namespace std;
 
@@ -66,25 +69,16 @@ void PrintBanner() {
     cout << "\n";
 }
 
-/**
- * @brief 显示配置信息
- */
-void PrintConfiguration() {
-    cout << "【配置信息】\n";
-    cout << "  后端API地址: http://localhost:8080 (示例)\n";
-    cout << "  前端UDP组播地址: 239.0.0.1:5000 (示例)\n";
-    cout << "  Webhook监听端口: 9000 (示例)\n";
-    cout << "  数据采集周期: 5秒 (示例)\n";
-    cout << "  状态广播周期: 1秒 (示例)\n";
-    cout << "\n";
-    cout << "注意: 实际配置需要从配置文件或环境变量读取\n";
-    cout << "\n";
-}
 
 /**
- * @brief 初始化所有层
+ * @brief 应用程序引导器 - 负责整个系统的启动和关闭
+ * 
+ * 职责：
+ * - 协调基础设施层、应用层、接口层的初始化
+ * - 管理所有组件的生命周期
+ * - 提供优雅启动和关闭
  */
-class SystemInitializer {
+class ApplicationBootstrap {
 public:
     /**
      * @brief 初始化系统
@@ -154,111 +148,210 @@ public:
         cout << "✅ 系统已安全关闭\n";
         cout << "\n";
     }
+    
+    /**
+     * @brief 获取监控服务（用于主循环显示状态）
+     */
+    shared_ptr<zygl::application::MonitoringService> GetMonitoringService() const {
+        return m_monitoringService;
+    }
+    
+    /**
+     * @brief 加载配置
+     */
+    void LoadConfiguration(const std::string& configPath) {
+        m_config = zygl::infrastructure::ConfigLoader::LoadFromFile(configPath);
+        
+        // 验证配置
+        if (!zygl::infrastructure::ConfigLoader::ValidateConfig(m_config)) {
+            cerr << "⚠️  配置验证失败，将使用默认值" << endl;
+        }
+        
+        // 打印配置信息
+        zygl::infrastructure::ConfigLoader::PrintConfig(m_config);
+    }
 
 private:
+    // 系统配置
+    zygl::infrastructure::SystemConfig m_config;
     // 基础设施层组件
-    // shared_ptr<infrastructure::InMemoryChassisRepository> m_chassisRepo;
-    // shared_ptr<infrastructure::InMemoryStackRepository> m_stackRepo;
-    // shared_ptr<infrastructure::InMemoryAlertRepository> m_alertRepo;
-    // shared_ptr<infrastructure::QywApiClient> m_apiClient;
-    // shared_ptr<infrastructure::DataCollectorService> m_dataCollector;
+    shared_ptr<zygl::domain::IChassisRepository> m_chassisRepo;
+    shared_ptr<zygl::domain::IStackRepository> m_stackRepo;
+    shared_ptr<zygl::domain::IAlertRepository> m_alertRepo;
+    shared_ptr<zygl::infrastructure::QywApiClient> m_apiClient;
+    shared_ptr<zygl::infrastructure::DataCollectorService> m_dataCollector;
     
     // 应用层组件
-    // shared_ptr<application::MonitoringService> m_monitoringService;
-    // shared_ptr<application::StackControlService> m_stackControlService;
-    // shared_ptr<application::AlertService> m_alertService;
+    shared_ptr<zygl::application::MonitoringService> m_monitoringService;
+    shared_ptr<zygl::application::StackControlService> m_stackControlService;
+    shared_ptr<zygl::application::AlertService> m_alertService;
     
     // 接口层组件
-    // shared_ptr<interfaces::StateBroadcaster> m_stateBroadcaster;
-    // shared_ptr<interfaces::CommandListener> m_commandListener;
-    // shared_ptr<interfaces::WebhookListener> m_webhookListener;
+    shared_ptr<zygl::interfaces::StateBroadcaster> m_stateBroadcaster;
+    shared_ptr<zygl::interfaces::CommandListener> m_commandListener;
+    shared_ptr<zygl::interfaces::WebhookListener> m_webhookListener;
     
     /**
      * @brief 初始化基础设施层
      */
     bool InitializeInfrastructure() {
-        // TODO: 创建Repository实例
-        // m_chassisRepo = make_shared<infrastructure::InMemoryChassisRepository>();
-        // m_chassisRepo->Initialize();
-        
-        // TODO: 创建Stack和Alert的Repository
-        // m_stackRepo = make_shared<infrastructure::InMemoryStackRepository>();
-        // m_alertRepo = make_shared<infrastructure::InMemoryAlertRepository>();
-        
-        // TODO: 创建API客户端
-        // m_apiClient = make_shared<infrastructure::QywApiClient>("http://localhost:8080");
-        
-        // TODO: 创建数据采集服务
-        // m_dataCollector = make_shared<infrastructure::DataCollectorService>(
-        //     m_apiClient, m_chassisRepo, m_stackRepo, m_alertRepo);
-        
-        return true;  // 暂时返回true，待实现
+        try {
+            // 1. 创建所有Repository实例
+            auto repos = zygl::infrastructure::RepositoryFactory::CreateAll();
+            m_chassisRepo = repos.chassisRepo;
+            m_stackRepo = repos.stackRepo;
+            m_alertRepo = repos.alertRepo;
+            
+            // 2. 初始化系统拓扑（9×14机箱配置）
+            zygl::infrastructure::SystemInitializer::InitializeTopology(m_chassisRepo);
+            
+            // 3. 创建API客户端（使用配置）
+            m_apiClient = zygl::infrastructure::ServiceFactory::CreateApiClient(
+                m_config.backend.apiUrl,           // 后端API地址
+                m_config.backend.timeoutSeconds    // 超时时间（秒）
+            );
+            
+            // 4. 创建数据采集服务（使用配置）
+            m_dataCollector = zygl::infrastructure::ServiceFactory::CreateDataCollector(
+                m_apiClient,
+                m_chassisRepo,
+                m_stackRepo,
+                m_config.dataCollector.intervalSeconds  // 采集间隔
+            );
+            
+            return true;
+        } catch (const exception& e) {
+            cerr << "    初始化基础设施层异常: " << e.what() << endl;
+            return false;
+        }
     }
     
     /**
      * @brief 初始化应用层
      */
     bool InitializeApplication() {
-        // TODO: 创建应用服务
-        // m_monitoringService = make_shared<application::MonitoringService>(
-        //     m_chassisRepo, m_stackRepo, m_alertRepo);
-        
-        // m_stackControlService = make_shared<application::StackControlService>(
-        //     m_stackRepo, m_chassisRepo, m_apiClient);
-        
-        // m_alertService = make_shared<application::AlertService>(
-        //     m_alertRepo, m_chassisRepo);
-        
-        return true;  // 暂时返回true，待实现
+        try {
+            // 1. 创建监控服务（系统状态查询）
+            m_monitoringService = make_shared<zygl::application::MonitoringService>(
+                m_chassisRepo,
+                m_stackRepo,
+                m_alertRepo
+            );
+            
+            // 2. 创建业务链路控制服务（deploy/undeploy）
+            m_stackControlService = make_shared<zygl::application::StackControlService>(
+                m_stackRepo,
+                m_apiClient
+            );
+            
+            // 3. 创建告警服务（告警处理）
+            m_alertService = make_shared<zygl::application::AlertService>(
+                m_alertRepo,
+                m_chassisRepo
+            );
+            
+            return true;
+        } catch (const exception& e) {
+            cerr << "    初始化应用层异常: " << e.what() << endl;
+            return false;
+        }
     }
     
     /**
      * @brief 初始化接口层
      */
     bool InitializeInterfaces() {
-        // TODO: 创建状态广播器
-        // m_stateBroadcaster = make_shared<interfaces::StateBroadcaster>(
-        //     "239.0.0.1", 5000, m_monitoringService);
-        
-        // TODO: 创建命令监听器
-        // m_commandListener = make_shared<interfaces::CommandListener>(
-        //     "239.0.0.1", 5001, m_stackControlService, m_alertService);
-        
-        // TODO: 创建Webhook监听器
-        // m_webhookListener = make_shared<interfaces::WebhookListener>(
-        //     9000, m_alertService);
-        
-        return true;  // 暂时返回true，待实现
+        try {
+            // 1. 创建状态广播器（UDP组播，向前端推送状态，使用配置）
+            m_stateBroadcaster = make_shared<zygl::interfaces::StateBroadcaster>(
+                m_monitoringService,
+                m_config.udp.broadcastIntervalMs
+            );
+            
+            // 2. 创建命令监听器（UDP组播，接收前端命令）
+            m_commandListener = make_shared<zygl::interfaces::CommandListener>(
+                m_stackControlService,
+                m_alertService
+            );
+            
+            // 3. 创建Webhook监听器（HTTP服务器，接收后端告警，使用配置）
+            m_webhookListener = make_shared<zygl::interfaces::WebhookListener>(
+                m_alertService,
+                m_config.webhook.listenPort
+            );
+            
+            return true;
+        } catch (const exception& e) {
+            cerr << "    初始化接口层异常: " << e.what() << endl;
+            return false;
+        }
     }
     
     /**
      * @brief 启动后台服务
      */
     bool StartBackgroundServices() {
-        // TODO: 启动数据采集服务
-        // m_dataCollector->Start();
-        
-        // TODO: 启动状态广播
-        // m_stateBroadcaster->Start();
-        
-        // TODO: 启动命令监听
-        // m_commandListener->Start();
-        
-        // TODO: 启动Webhook服务
-        // m_webhookListener->Start();
-        
-        return true;  // 暂时返回true，待实现
+        try {
+            // 1. 启动数据采集服务（定时从后端API获取数据）
+            if (m_dataCollector) {
+                m_dataCollector->Start();
+                cout << "      ✓ 数据采集服务已启动\n";
+            }
+            
+            // 2. 启动状态广播（定时向前端UDP广播系统状态）
+            if (m_stateBroadcaster) {
+                m_stateBroadcaster->Start();
+                cout << "      ✓ 状态广播服务已启动\n";
+            }
+            
+            // 3. 启动命令监听（接收前端UDP命令）
+            if (m_commandListener) {
+                m_commandListener->Start();
+                cout << "      ✓ 命令监听服务已启动\n";
+            }
+            
+            // 4. 启动Webhook服务（接收后端告警推送）
+            if (m_webhookListener) {
+                m_webhookListener->Start();
+                cout << "      ✓ Webhook服务已启动\n";
+            }
+            
+            return true;
+        } catch (const exception& e) {
+            cerr << "    启动后台服务异常: " << e.what() << endl;
+            return false;
+        }
     }
     
     /**
      * @brief 停止后台服务
      */
     void StopBackgroundServices() {
-        // TODO: 停止所有后台服务
-        // if (m_dataCollector) m_dataCollector->Stop();
-        // if (m_stateBroadcaster) m_stateBroadcaster->Stop();
-        // if (m_commandListener) m_commandListener->Stop();
-        // if (m_webhookListener) m_webhookListener->Stop();
+        // 按启动的相反顺序停止服务
+        
+        // 1. 停止Webhook服务
+        if (m_webhookListener) {
+            m_webhookListener->Stop();
+            cout << "      ✓ Webhook服务已停止\n";
+        }
+        
+        // 2. 停止命令监听
+        if (m_commandListener) {
+            m_commandListener->Stop();
+            cout << "      ✓ 命令监听服务已停止\n";
+        }
+        
+        // 3. 停止状态广播
+        if (m_stateBroadcaster) {
+            m_stateBroadcaster->Stop();
+            cout << "      ✓ 状态广播服务已停止\n";
+        }
+        
+        // 4. 停止数据采集服务
+        if (m_dataCollector) {
+            m_dataCollector->Stop();
+            cout << "      ✓ 数据采集服务已停止\n";
+        }
     }
     
     /**
@@ -280,25 +373,34 @@ private:
  * @brief 主函数
  */
 int main(int argc, char* argv[]) {
-    // 避免未使用参数警告
-    (void)argc;
-    (void)argv;
-    
     // 设置信号处理
     signal(SIGINT, SignalHandler);
     signal(SIGTERM, SignalHandler);
     
     // 显示启动信息
     PrintBanner();
-    PrintConfiguration();
     
     // 初始化系统
-    SystemInitializer initializer;
-    if (!initializer.Initialize()) {
+    ApplicationBootstrap bootstrap;
+    
+    // 加载配置（支持命令行参数指定配置文件）
+    string configPath = "config.json";  // 默认配置文件
+    if (argc >= 2) {
+        configPath = argv[1];
+        cout << "使用自定义配置文件: " << configPath << "\n\n";
+    } else {
+        cout << "使用默认配置文件: " << configPath << "\n\n";
+    }
+    
+    bootstrap.LoadConfiguration(configPath);
+    
+    // 初始化系统组件
+    if (!bootstrap.Initialize()) {
         cerr << "❌ 系统初始化失败，退出程序" << endl;
         return 1;
     }
     
+    // TODO: 生产环境可以移除控制台状态打印（日志记录应该在各个服务内部）
     // 主循环
     cout << "【系统运行中】\n";
     cout << "  系统正在运行，按 Ctrl+C 停止...\n";
@@ -306,26 +408,60 @@ int main(int argc, char* argv[]) {
     
     // 定期显示系统状态
     int statusCounter = 0;
+    auto monitoringService = bootstrap.GetMonitoringService();
+    
     while (g_running) {
         // 休眠1秒
         this_thread::sleep_for(chrono::seconds(1));
         
-        // 每10秒显示一次心跳
+        // 每10秒显示一次心跳和系统状态
         if (++statusCounter >= 10) {
             statusCounter = 0;
             time_t now = time(nullptr);
-            cout << "  [心跳] " << ctime(&now);
+            char* timeStr = ctime(&now);
+            // 去除换行符
+            if (timeStr && timeStr[strlen(timeStr) - 1] == '\n') {
+                timeStr[strlen(timeStr) - 1] = '\0';
+            }
+            cout << "  [心跳] " << timeStr << "\n";
             
-            // TODO: 显示实际的系统状态
-            // auto overview = monitoringService->GetSystemOverview();
-            // cout << "    机箱: " << overview.totalChassis 
-            //      << ", 正常板卡: " << overview.normalBoards
-            //      << ", 告警: " << overview.unacknowledgedAlertCount << "\n";
+            // 显示系统概览
+            if (monitoringService) {
+                try {
+                    auto response = monitoringService->GetSystemOverview();
+                    if (response.success) {
+                        const auto& overview = response.data;
+                        cout << "    └─ 机箱: " << overview.totalChassis 
+                             << " | 正常板卡: " << overview.totalNormalBoards 
+                             << "/" << overview.totalBoards
+                             << " (异常: " << overview.totalAbnormalBoards
+                             << ", 离线: " << overview.totalOfflineBoards << ")";
+                        
+                        // 获取业务链路统计
+                        auto stacksResponse = monitoringService->GetAllStacks();
+                        if (stacksResponse.success) {
+                            cout << " | 业务链路: " << stacksResponse.data.deployedStacks;
+                        }
+                        
+                        // 获取告警统计
+                        auto alertsResponse = monitoringService->GetActiveAlerts();
+                        if (alertsResponse.success) {
+                            cout << " | 未确认告警: " << alertsResponse.data.unacknowledgedCount;
+                        }
+                        
+                        cout << "\n";
+                    } else {
+                        cout << "    └─ 获取状态失败: " << response.message << "\n";
+                    }
+                } catch (const exception& e) {
+                    cout << "    └─ 获取状态异常: " << e.what() << "\n";
+                }
+            }
         }
     }
     
     // 优雅关闭
-    initializer.Shutdown();
+    bootstrap.Shutdown();
     
     cout << "╔══════════════════════════════════════════════════════════════╗\n";
     cout << "║              程序已退出，感谢使用！                           ║\n";

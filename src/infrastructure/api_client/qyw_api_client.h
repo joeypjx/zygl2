@@ -4,9 +4,12 @@
 #include <vector>
 #include <optional>
 #include <memory>
+#include <sstream>
+#include <iostream>
 
-// 注意：实际使用时需要包含cpp-httplib
-// #include <httplib.h>
+// HTTP库和JSON库
+#include "../../../third_party/httplib.h"
+#include "../../../third_party/json.hpp"
 
 namespace zygl::infrastructure {
 
@@ -138,15 +141,32 @@ public:
      * @return 板卡信息列表，如果失败返回空optional
      */
     std::optional<std::vector<BoardInfoData>> GetBoardInfo() const {
-        // TODO: 实现HTTP GET请求
-        // std::string url = m_baseUrl + "/api/v1/external/qyw/boardinfo";
-        // httplib::Client client(m_baseUrl);
-        // client.set_connection_timeout(m_timeout);
-        // auto res = client.Get("/api/v1/external/qyw/boardinfo");
-        // if (res && res->status == 200) {
-        //     return ParseBoardInfoResponse(res->body);
-        // }
-        return std::nullopt;
+        try {
+            // 创建HTTP客户端
+            httplib::Client client(m_baseUrl);
+            client.set_connection_timeout(0, m_timeout * 1000000); // 微秒
+            client.set_read_timeout(m_timeout, 0); // 秒
+            
+            // 发送GET请求
+            auto res = client.Get("/api/v1/external/qyw/boardinfo");
+            
+            if (!res) {
+                std::cerr << "GetBoardInfo: 请求失败 - 无响应" << std::endl;
+                return std::nullopt;
+            }
+            
+            if (res->status != 200) {
+                std::cerr << "GetBoardInfo: HTTP错误 " << res->status << std::endl;
+                return std::nullopt;
+            }
+            
+            // 解析JSON响应
+            return ParseBoardInfoResponse(res->body);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "GetBoardInfo: 异常 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
     }
 
     /**
@@ -157,15 +177,32 @@ public:
      * @return 业务链路信息列表，如果失败返回空optional
      */
     std::optional<std::vector<StackInfoData>> GetStackInfo() const {
-        // TODO: 实现HTTP GET请求
-        // std::string url = m_baseUrl + "/api/v1/external/qyw/stackinfo";
-        // httplib::Client client(m_baseUrl);
-        // client.set_connection_timeout(m_timeout);
-        // auto res = client.Get("/api/v1/external/qyw/stackinfo");
-        // if (res && res->status == 200) {
-        //     return ParseStackInfoResponse(res->body);
-        // }
-        return std::nullopt;
+        try {
+            // 创建HTTP客户端
+            httplib::Client client(m_baseUrl);
+            client.set_connection_timeout(0, m_timeout * 1000000);
+            client.set_read_timeout(m_timeout, 0);
+            
+            // 发送GET请求
+            auto res = client.Get("/api/v1/external/qyw/stackinfo");
+            
+            if (!res) {
+                std::cerr << "GetStackInfo: 请求失败 - 无响应" << std::endl;
+                return std::nullopt;
+            }
+            
+            if (res->status != 200) {
+                std::cerr << "GetStackInfo: HTTP错误 " << res->status << std::endl;
+                return std::nullopt;
+            }
+            
+            // 解析JSON响应
+            return ParseStackInfoResponse(res->body);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "GetStackInfo: 异常 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
     }
 
     /**
@@ -177,22 +214,39 @@ public:
      * @return 部署结果（成功和失败的业务链路），如果失败返回空optional
      */
     std::optional<DeployResponse> Deploy(const std::vector<std::string>& stackLabels) const {
-        // TODO: 实现HTTP POST请求
-        // std::string url = m_baseUrl + "/api/v1/external/qyw/deploy";
-        // httplib::Client client(m_baseUrl);
-        // client.set_connection_timeout(m_timeout);
-        // 
-        // // 构建JSON请求体
-        // nlohmann::json body;
-        // body["stackLabels"] = stackLabels;
-        // 
-        // auto res = client.Post("/api/v1/external/qyw/deploy", 
-        //                       body.dump(), 
-        //                       "application/json");
-        // if (res && res->status == 200) {
-        //     return ParseDeployResponse(res->body);
-        // }
-        return std::nullopt;
+        try {
+            // 创建HTTP客户端
+            httplib::Client client(m_baseUrl);
+            client.set_connection_timeout(0, m_timeout * 1000000);
+            client.set_read_timeout(m_timeout, 0);
+            
+            // 构建JSON请求体
+            nlohmann::json body;
+            body["stackLabels"] = stackLabels;
+            std::string jsonStr = body.dump();
+            
+            // 发送POST请求
+            auto res = client.Post("/api/v1/external/qyw/deploy",
+                                  jsonStr,
+                                  "application/json");
+            
+            if (!res) {
+                std::cerr << "Deploy: 请求失败 - 无响应" << std::endl;
+                return std::nullopt;
+            }
+            
+            if (res->status != 200) {
+                std::cerr << "Deploy: HTTP错误 " << res->status << std::endl;
+                return std::nullopt;
+            }
+            
+            // 解析JSON响应
+            return ParseDeployResponse(res->body);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Deploy: 异常 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
     }
 
     /**
@@ -204,22 +258,39 @@ public:
      * @return 停用结果（成功和失败的业务链路），如果失败返回空optional
      */
     std::optional<DeployResponse> Undeploy(const std::vector<std::string>& stackLabels) const {
-        // TODO: 实现HTTP POST请求
-        // std::string url = m_baseUrl + "/api/v1/external/qyw/undeploy";
-        // httplib::Client client(m_baseUrl);
-        // client.set_connection_timeout(m_timeout);
-        // 
-        // // 构建JSON请求体
-        // nlohmann::json body;
-        // body["stackLabels"] = stackLabels;
-        // 
-        // auto res = client.Post("/api/v1/external/qyw/undeploy", 
-        //                       body.dump(), 
-        //                       "application/json");
-        // if (res && res->status == 200) {
-        //     return ParseDeployResponse(res->body);
-        // }
-        return std::nullopt;
+        try {
+            // 创建HTTP客户端
+            httplib::Client client(m_baseUrl);
+            client.set_connection_timeout(0, m_timeout * 1000000);
+            client.set_read_timeout(m_timeout, 0);
+            
+            // 构建JSON请求体
+            nlohmann::json body;
+            body["stackLabels"] = stackLabels;
+            std::string jsonStr = body.dump();
+            
+            // 发送POST请求
+            auto res = client.Post("/api/v1/external/qyw/undeploy",
+                                  jsonStr,
+                                  "application/json");
+            
+            if (!res) {
+                std::cerr << "Undeploy: 请求失败 - 无响应" << std::endl;
+                return std::nullopt;
+            }
+            
+            if (res->status != 200) {
+                std::cerr << "Undeploy: HTTP错误 " << res->status << std::endl;
+                return std::nullopt;
+            }
+            
+            // 解析JSON响应
+            return ParseDeployResponse(res->body);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Undeploy: 异常 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
     }
 
     /**
@@ -227,12 +298,19 @@ public:
      * @return true 如果能成功连接到API服务器
      */
     bool TestConnection() const {
-        // TODO: 实现连接测试
-        // httplib::Client client(m_baseUrl);
-        // client.set_connection_timeout(m_timeout);
-        // auto res = client.Get("/api/v1/external/qyw/boardinfo");
-        // return res && (res->status == 200 || res->status == 401);
-        return false;
+        try {
+            httplib::Client client(m_baseUrl);
+            client.set_connection_timeout(0, m_timeout * 1000000);
+            client.set_read_timeout(m_timeout, 0);
+            
+            auto res = client.Get("/api/v1/external/qyw/boardinfo");
+            
+            // 只要能连接上并收到响应（200或其他状态码），都认为连接成功
+            return res && (res->status == 200 || res->status == 401 || res->status >= 100);
+        } catch (const std::exception& e) {
+            std::cerr << "TestConnection: 异常 - " << e.what() << std::endl;
+            return false;
+        }
     }
 
     /**
@@ -254,10 +332,177 @@ private:
     std::string m_baseUrl;      // API基础URL
     int m_timeout;              // 超时时间（秒）
 
-    // TODO: 实现JSON解析方法
-    // std::optional<std::vector<BoardInfoData>> ParseBoardInfoResponse(const std::string& json) const;
-    // std::optional<std::vector<StackInfoData>> ParseStackInfoResponse(const std::string& json) const;
-    // std::optional<DeployResponse> ParseDeployResponse(const std::string& json) const;
+    /**
+     * @brief 解析板卡信息JSON响应
+     */
+    std::optional<std::vector<BoardInfoData>> ParseBoardInfoResponse(const std::string& jsonStr) const {
+        try {
+            auto json = nlohmann::json::parse(jsonStr);
+            
+            // 检查响应格式
+            if (!json.contains("data") || !json["data"].is_array()) {
+                std::cerr << "ParseBoardInfoResponse: 响应格式错误" << std::endl;
+                return std::nullopt;
+            }
+            
+            std::vector<BoardInfoData> result;
+            
+            for (const auto& item : json["data"]) {
+                BoardInfoData boardInfo;
+                
+                // 解析基本信息
+                boardInfo.chassisName = item.value("chassisName", "");
+                boardInfo.chassisNumber = item.value("chassisNumber", 0);
+                boardInfo.boardName = item.value("boardName", "");
+                boardInfo.boardNumber = item.value("boardNumber", 0);
+                boardInfo.boardType = item.value("boardType", 0);
+                boardInfo.boardAddress = item.value("boardAddress", "");
+                boardInfo.boardStatus = item.value("boardStatus", 0);
+                
+                // 解析任务列表
+                if (item.contains("taskInfos") && item["taskInfos"].is_array()) {
+                    for (const auto& taskItem : item["taskInfos"]) {
+                        BoardInfoData::TaskInfo task;
+                        task.taskID = taskItem.value("taskID", "");
+                        task.taskStatus = taskItem.value("taskStatus", "");
+                        task.serviceName = taskItem.value("serviceName", "");
+                        task.serviceUUID = taskItem.value("serviceUUID", "");
+                        task.stackName = taskItem.value("stackName", "");
+                        task.stackUUID = taskItem.value("stackUUID", "");
+                        boardInfo.taskInfos.push_back(task);
+                    }
+                }
+                
+                result.push_back(boardInfo);
+            }
+            
+            return result;
+            
+        } catch (const nlohmann::json::exception& e) {
+            std::cerr << "ParseBoardInfoResponse: JSON解析错误 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
+    }
+
+    /**
+     * @brief 解析业务链路信息JSON响应
+     */
+    std::optional<std::vector<StackInfoData>> ParseStackInfoResponse(const std::string& jsonStr) const {
+        try {
+            auto json = nlohmann::json::parse(jsonStr);
+            
+            if (!json.contains("data") || !json["data"].is_array()) {
+                std::cerr << "ParseStackInfoResponse: 响应格式错误" << std::endl;
+                return std::nullopt;
+            }
+            
+            std::vector<StackInfoData> result;
+            
+            for (const auto& item : json["data"]) {
+                StackInfoData stackInfo;
+                
+                // 解析基本信息
+                stackInfo.stackName = item.value("stackName", "");
+                stackInfo.stackUUID = item.value("stackUUID", "");
+                stackInfo.stackDeployStatus = item.value("stackDeployStatus", 0);
+                stackInfo.stackRunningStatus = item.value("stackRunningStatus", 1);
+                
+                // 解析标签
+                if (item.contains("stackLabelInfos") && item["stackLabelInfos"].is_array()) {
+                    for (const auto& labelItem : item["stackLabelInfos"]) {
+                        StackInfoData::LabelInfo label;
+                        label.labelName = labelItem.value("labelName", "");
+                        label.labelUUID = labelItem.value("labelUUID", "");
+                        stackInfo.stackLabelInfos.push_back(label);
+                    }
+                }
+                
+                // 解析组件
+                if (item.contains("serviceInfos") && item["serviceInfos"].is_array()) {
+                    for (const auto& serviceItem : item["serviceInfos"]) {
+                        StackInfoData::ServiceInfo service;
+                        service.serviceName = serviceItem.value("serviceName", "");
+                        service.serviceUUID = serviceItem.value("serviceUUID", "");
+                        service.serviceStatus = serviceItem.value("serviceStatus", 0);
+                        service.serviceType = serviceItem.value("serviceType", 0);
+                        
+                        // 解析任务
+                        if (serviceItem.contains("taskInfos") && serviceItem["taskInfos"].is_array()) {
+                            for (const auto& taskItem : serviceItem["taskInfos"]) {
+                                StackInfoData::ServiceInfo::TaskInfo task;
+                                task.taskID = taskItem.value("taskID", "");
+                                task.taskStatus = taskItem.value("taskStatus", "");
+                                task.cpuCores = taskItem.value("cpuCores", 0.0f);
+                                task.cpuUsed = taskItem.value("cpuUsed", 0.0f);
+                                task.cpuUsage = taskItem.value("cpuUsage", 0.0f);
+                                task.memorySize = taskItem.value("memorySize", 0.0f);
+                                task.memoryUsed = taskItem.value("memoryUsed", 0.0f);
+                                task.memoryUsage = taskItem.value("memoryUsage", 0.0f);
+                                task.netReceive = taskItem.value("netReceive", 0.0f);
+                                task.netSent = taskItem.value("netSent", 0.0f);
+                                task.gpuMemUsed = taskItem.value("gpuMemUsed", 0.0f);
+                                task.chassisName = taskItem.value("chassisName", "");
+                                task.chassisNumber = taskItem.value("chassisNumber", 0);
+                                task.boardName = taskItem.value("boardName", "");
+                                task.boardNumber = taskItem.value("boardNumber", 0);
+                                task.boardAddress = taskItem.value("boardAddress", "");
+                                service.taskInfos.push_back(task);
+                            }
+                        }
+                        
+                        stackInfo.serviceInfos.push_back(service);
+                    }
+                }
+                
+                result.push_back(stackInfo);
+            }
+            
+            return result;
+            
+        } catch (const nlohmann::json::exception& e) {
+            std::cerr << "ParseStackInfoResponse: JSON解析错误 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
+    }
+
+    /**
+     * @brief 解析Deploy/Undeploy响应
+     */
+    std::optional<DeployResponse> ParseDeployResponse(const std::string& jsonStr) const {
+        try {
+            auto json = nlohmann::json::parse(jsonStr);
+            
+            DeployResponse response;
+            
+            // 解析成功的业务链路
+            if (json.contains("successStackInfos") && json["successStackInfos"].is_array()) {
+                for (const auto& item : json["successStackInfos"]) {
+                    DeployResponse::StackResult result;
+                    result.stackName = item.value("stackName", "");
+                    result.stackUUID = item.value("stackUUID", "");
+                    result.message = item.value("message", "");
+                    response.successStackInfos.push_back(result);
+                }
+            }
+            
+            // 解析失败的业务链路
+            if (json.contains("failureStackInfos") && json["failureStackInfos"].is_array()) {
+                for (const auto& item : json["failureStackInfos"]) {
+                    DeployResponse::StackResult result;
+                    result.stackName = item.value("stackName", "");
+                    result.stackUUID = item.value("stackUUID", "");
+                    result.message = item.value("message", "");
+                    response.failureStackInfos.push_back(result);
+                }
+            }
+            
+            return response;
+            
+        } catch (const nlohmann::json::exception& e) {
+            std::cerr << "ParseDeployResponse: JSON解析错误 - " << e.what() << std::endl;
+            return std::nullopt;
+        }
+    }
 };
 
 } // namespace zygl::infrastructure

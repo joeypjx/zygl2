@@ -144,17 +144,22 @@ private:
      * 从API获取板卡数据，更新Chassis聚合
      */
     void CollectBoardInfo() {
-        // 1. 调用API
-        auto boardInfosOpt = m_apiClient->GetBoardInfo();
-        if (!boardInfosOpt.has_value()) {
-            // API调用失败，跳过本次采集
-            return;
-        }
+        try {
+            // 1. 调用API
+            auto boardInfosOpt = m_apiClient->GetBoardInfo();
+            if (!boardInfosOpt.has_value()) {
+                // API调用失败，跳过本次采集
+                return;
+            }
+            
+            const auto& boardInfos = boardInfosOpt.value();
         
-        const auto& boardInfos = boardInfosOpt.value();
-        
-        // 2. 获取当前所有机箱（从仓储）
-        auto allChassis = m_chassisRepo->GetAll();
+            // 2. 获取当前所有机箱（从仓储）
+            // 注意：使用堆分配避免栈溢出（Chassis数组约488KB）
+            auto allChassisPtr = std::make_unique<std::array<domain::Chassis, domain::TOTAL_CHASSIS_COUNT>>(
+                m_chassisRepo->GetAll()
+            );
+            auto& allChassis = *allChassisPtr;
         
         // 3. 创建已上报板卡的集合（用于判断离线）
         std::set<std::string> reportedBoards;
@@ -190,9 +195,14 @@ private:
                 }
             }
         }
-        
-        // 5. 原子性地提交所有更新（双缓冲交换）
-        m_chassisRepo->SaveAll(allChassis);
+            
+            // 5. 原子性地提交所有更新（双缓冲交换）
+            m_chassisRepo->SaveAll(allChassis);
+        } catch (const std::exception& e) {
+            std::cerr << "CollectBoardInfo: 异常 - " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "CollectBoardInfo: 未知异常" << std::endl;
+        }
     }
 
     /**
@@ -201,23 +211,29 @@ private:
      * 从API获取业务链路数据，更新Stack聚合
      */
     void CollectStackInfo() {
-        // 1. 调用API
-        auto stackInfosOpt = m_apiClient->GetStackInfo();
-        if (!stackInfosOpt.has_value()) {
-            return;
+        try {
+            // 1. 调用API
+            auto stackInfosOpt = m_apiClient->GetStackInfo();
+            if (!stackInfosOpt.has_value()) {
+                return;
+            }
+            
+            const auto& stackInfos = stackInfosOpt.value();
+            
+            // 2. 转换为领域对象
+            std::vector<domain::Stack> stacks;
+            for (const auto& stackInfo : stackInfos) {
+                domain::Stack stack = ConvertToStack(stackInfo);
+                stacks.push_back(stack);
+            }
+            
+            // 3. 批量保存
+            m_stackRepo->SaveAll(stacks);
+        } catch (const std::exception& e) {
+            std::cerr << "CollectStackInfo: 异常 - " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "CollectStackInfo: 未知异常" << std::endl;
         }
-        
-        const auto& stackInfos = stackInfosOpt.value();
-        
-        // 2. 转换为领域对象
-        std::vector<domain::Stack> stacks;
-        for (const auto& stackInfo : stackInfos) {
-            domain::Stack stack = ConvertToStack(stackInfo);
-            stacks.push_back(stack);
-        }
-        
-        // 3. 批量保存
-        m_stackRepo->SaveAll(stacks);
     }
 
     /**

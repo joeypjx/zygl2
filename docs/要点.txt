@@ -1,0 +1,18 @@
+在 Linux x86_64 上未对齐访问通常不会触发 bus error，但为跨平台稳定性，仍建议按规范修正对齐与序列化，避免隐患。
+建议与注意事项（面向 Linux 部署）：
+对齐与序列化
+将 #pragma pack(1) 从领域层移除（src/domain/value_objects.h 不再打包），领域模型使用自然对齐。
+在接口层（如 interfaces/udp/udp_protocol.h）定义“线协议”打包结构体，并在 StateBroadcaster/CommandListener 中做显式序列化/反序列化（逐字段拷贝或 memcpy），处理好网络字节序。
+已做且保留：GetAll() 返回的大数组用堆分配；InMemoryChassisRepository::SaveAll/Initialize 写操作加锁。
+编译与链接（Linux）
+正常构建：make zygl2
+若启用 HTTPS，需要链接：-lssl -lcrypto -lz（Makefile 有 HTTPS=1 ZLIB=1 开关的话，开启它们）。
+调试构建建议：CXXFLAGS="-O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer"，可立刻发现未定义行为/越界。
+运行前开启 core dump：ulimit -c unlimited
+运行环境
+UDP 组播在 Linux 需确保路由和网卡加入组播：设置 IP_ADD_MEMBERSHIP，必要时指定 IP_MULTICAST_IF。
+确认防火墙/安全策略放行 state_broadcast_port、command_listener_port、webhook 端口。
+网络字节序统一使用 htons/htonl/ntohs/ntohl 处理 UDP 线协议层的整数。
+排错与验证
+使用 AddressSanitizer/UBSan（见上）或 Valgrind（Linux）做一次全流程冒烟，确认无潜在内存/未定义行为。
+若后端暂不可达，当前已做的异常处理会保证采集线程不崩溃，系统持续运行。
