@@ -1,0 +1,99 @@
+# 编译输出
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# 可执行文件
+test_domain
+main
+zygl2
+
+# 编译器生成的文件
+*.d
+*.slo
+*.lo
+*.ko
+*.obj
+*.elf
+
+# 预编译头文件
+*.gch
+*.pch
+
+# 调试符号
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE和编辑器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake生成的文件
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Build目录
+build/
+bin/
+obj/
+out/
+
+# 依赖库（如果本地管理）
+third_party/
+external/
+lib/
+libs/
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# 测试覆盖率文件
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# 文档生成
+docs/html/
+docs/latex/
+Doxyfile.bak
+
+# 操作系统生成的文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 包管理器
+conan/
+vcpkg/
+.conan/
+
+# 性能分析文件
+*.prof
+*.trace
+perf.data*
+
