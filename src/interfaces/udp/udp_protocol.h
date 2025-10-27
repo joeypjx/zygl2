@@ -59,7 +59,18 @@ struct UdpPacketHeader {
 };
 
 /**
- * @brief 机箱/板卡状态数据包
+ * @brief 资源监控报文头部（22字节）
+ */
+struct ResourceMonitorHeader {
+    char data[22];              // 22字节头部数据
+    
+    ResourceMonitorHeader() {
+        std::memset(data, 0, sizeof(data));
+    }
+};
+
+/**
+ * @brief 机箱/板卡状态数据包（旧协议，保留兼容）
  * 
  * 包含一个机箱的完整信息（14个板卡）
  */
@@ -77,6 +88,36 @@ struct ChassisStatePacket {
         std::memset(chassisName, 0, sizeof(chassisName));
     }
 };
+
+/**
+ * @brief 资源监控报文响应数据包
+ * 
+ * 按照资源监控报文响应协议定义，总计1000字节：
+ * - 0-21字节：22字节头部
+ * - 22-23字节：2字节命令码（F000H = 0xF000）
+ * - 24-27字节：4字节响应ID
+ * - 28-135字节：108字节板卡状态（9个机箱*12块板卡，1=正常，0=异常）
+ * - 136-999字节：864字节任务状态（9个机箱*12块板卡*8个任务，1=正常，2=异常）
+ */
+struct ResourceMonitorResponsePacket {
+    ResourceMonitorHeader header;        // 22字节头部
+    uint16_t commandCode;               // 命令码 F000H (0xF000)
+    uint32_t responseID;                // 响应ID（从0开始）
+    // 板卡状态数组：9个机箱，每个机箱12个板卡
+    uint8_t boardStates[9][12];         // 1=正常，0=异常
+    // 任务状态数组：9个机箱，每个机箱12个板卡，每个板卡8个任务
+    uint8_t taskStates[9][12][8];       // 1=正常，2=异常
+    
+    ResourceMonitorResponsePacket() 
+        : commandCode(0xF000), responseID(0) {
+        std::memset(boardStates, 0, sizeof(boardStates));
+        std::memset(taskStates, 0, sizeof(taskStates));
+    }
+};
+
+// 静态断言：确保数据包大小为1000字节
+static_assert(sizeof(ResourceMonitorResponsePacket) == 1000, 
+              "ResourceMonitorResponsePacket大小必须为1000字节");
 
 /**
  * @brief 告警消息数据包

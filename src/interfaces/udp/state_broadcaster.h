@@ -136,6 +136,7 @@ private:
             // 广播机箱状态
             if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastChassisTime).count() 
                 >= m_chassisBroadcastInterval) {
+                if (!m_running.load()) break;  // 再次检查运行状态
                 BroadcastChassisStates();
                 lastChassisTime = now;
             }
@@ -143,6 +144,7 @@ private:
             // 广播告警消息
             if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastAlertTime).count() 
                 >= m_alertBroadcastInterval) {
+                if (!m_running.load()) break;  // 再次检查运行状态
                 BroadcastAlerts();
                 lastAlertTime = now;
             }
@@ -150,17 +152,22 @@ private:
             // 广播业务链标签
             if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastLabelTime).count() 
                 >= m_labelBroadcastInterval) {
+                if (!m_running.load()) break;  // 再次检查运行状态
                 BroadcastStackLabels();
                 lastLabelTime = now;
             }
 
-            // 短暂休眠，避免CPU占用过高
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // 短暂休眠，避免CPU占用过高，并允许快速响应停止请求
+            for (int i = 0; i < 10 && m_running.load(); ++i) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
         }
     }
 
     /**
      * @brief 广播所有机箱的状态
+     * 
+     * 使用ResourceMonitorResponsePacket协议，包含所有9个机箱的状态
      */
     void BroadcastChassisStates() {
         // 获取系统概览
@@ -169,38 +176,60 @@ private:
             return;
         }
 
-        // 为每个机箱发送一个数据包
+        // 创建资源监控响应数据包
+        ResourceMonitorResponsePacket packet;
+        
+        // 设置响应ID（从0开始递增）
+        static uint32_t responseID = 0;
+        packet.responseID = responseID++;
+        if (responseID == 0xFFFFFFFF) {
+            responseID = 0;  // 防止溢出
+        }
+        
+        // 初始化数组为0（默认状态为异常/离线）
+        std::memset(packet.boardStates, 0, sizeof(packet.boardStates));
+        std::memset(packet.taskStates, 0, sizeof(packet.taskStates));
+        
+        // 遍历所有机箱，填充板卡和任务状态
         for (const auto& chassisDTO : response.data.chassis) {
-            ChassisStatePacket packet;
+            int32_t chassisIndex = chassisDTO.chassisNumber - 1;  // 机箱号1-9转换为索引0-8
             
-            // 填充包头
-            packet.header.sequenceNumber = m_sequenceNumber++;
-            packet.header.timestamp = GetCurrentTimestampMs();
-            
-            // 填充机箱信息
-            packet.chassisNumber = chassisDTO.chassisNumber;
-            std::strncpy(packet.chassisName, chassisDTO.chassisName.c_str(), 
-                        sizeof(packet.chassisName) - 1);
-            packet.boardCount = static_cast<int32_t>(chassisDTO.boards.size());
-            
-            // 填充板卡信息 - 直接构造Board对象
-            for (size_t i = 0; i < chassisDTO.boards.size() && i < 14; ++i) {
-                const auto& boardDTO = chassisDTO.boards[i];
-                
-                // 构造Board对象
-                packet.boards[i] = domain::Board(
-                    boardDTO.boardAddress.c_str(),
-                    boardDTO.boardNumber,
-                    static_cast<domain::BoardType>(boardDTO.boardType)
-                );
-                
-                // 注意：Board的任务信息通过UpdateFromApiData更新，
-                // 但在广播时我们只需要基本状态，任务详情通过"方案B"按需查询
+            // 检查机箱号是否有效
+            if (chassisIndex < 0 || chassisIndex >= 9) {
+                continue;
             }
             
-            // 发送数据包
-            SendPacket(&packet, sizeof(packet));
+            // 填充板卡状态（12块板卡）
+            for (size_t boardIdx = 0; boardIdx < chassisDTO.boards.size() && boardIdx < 12; ++boardIdx) {
+                const auto& boardDTO = chassisDTO.boards[boardIdx];
+                
+                // 板卡状态：1=正常，0=异常
+                // boardStatus: -1=未知，0=正常，1=异常，2=离线
+                if (boardDTO.boardStatus == 0) {
+                    packet.boardStates[chassisIndex][boardIdx] = 1;  // 正常
+                } else {
+                    packet.boardStates[chassisIndex][boardIdx] = 0;  // 异常或离线
+                }
+                
+                // 填充任务状态（每个板卡最多8个任务）
+                for (size_t taskIdx = 0; taskIdx < boardDTO.taskStatuses.size() && taskIdx < 8; ++taskIdx) {
+                    const std::string& status = boardDTO.taskStatuses[taskIdx];
+                    
+                    // 任务状态：1=正常，2=异常
+                    // 根据任务状态字符串判断
+                    if (status.empty() || status == "unknown") {
+                        packet.taskStates[chassisIndex][boardIdx][taskIdx] = 0;  // 未知
+                    } else if (status == "normal" || status == "running") {
+                        packet.taskStates[chassisIndex][boardIdx][taskIdx] = 1;  // 正常
+                    } else {
+                        packet.taskStates[chassisIndex][boardIdx][taskIdx] = 2;  // 异常
+                    }
+                }
+            }
         }
+        
+        // 发送数据包（总计1000字节）
+        SendPacket(&packet, sizeof(packet));
     }
 
     /**
